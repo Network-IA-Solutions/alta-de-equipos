@@ -3,8 +3,15 @@
 Un solo comando deja un equipo listo: programas instalados, dentro de la red por Tailscale y con
 los accesos directos a Google, Proxmox y la unidad compartida en el escritorio.
 
-> **Antes del primer uso**, un administrador de la tailnet tiene que completar `ADMIN.md`
-> (política de Tailscale y auth key). Está en la unidad compartida, `05-Herramientas\alta-de-equipos`.
+> **Antes del primer uso**, el administrador de la tailnet ejecuta una vez, en Linux, macOS o
+> Git Bash:
+>
+> ```bash
+> curl -fsSL https://raw.githubusercontent.com/Network-IA-Solutions/alta-de-equipos/main/configurar-admin.sh | bash
+> ```
+>
+> Pide un token de API de Tailscale, ajusta la política (con respaldo, validación y confirmación),
+> crea la auth key para los equipos y, opcionalmente, invita a la persona a GitHub.
 
 ## El comando
 
@@ -78,6 +85,7 @@ Los IDs de Windows se buscan con `winget search <nombre>`.
 |---|---|
 | `setup-windows.ps1` | el equipo nuevo (Windows) |
 | `setup-unix.sh` | el equipo nuevo (Linux y macOS) |
-| `ADMIN.md` | el administrador: pasos con permisos |
+| `configurar-admin.sh` | el administrador: política, auth key e invitación, en un comando |
+| `ADMIN.md` | el administrador: los mismos pasos a mano (en la unidad compartida) |
 | `tailscale-acl.hujson` | el administrador: política de Tailscale propuesta |
 | `invitar-a-la-organizacion.sh` | el administrador: invitar a GitHub |
