@@ -34,7 +34,12 @@ queda en el historial.
 
 | Paso | Windows | Linux | macOS |
 |---|---|---|---|
-| Programas base | winget: Chrome, Git, VS Code, 7-Zip | apt / dnf / pacman: git, curl | Homebrew: git, Chrome, VS Code |
+| Programas base | winget: Chrome, Git, VS Code, 7-Zip, Node LTS, Go | apt / dnf / pacman: git, curl; Node LTS (NodeSource) | Homebrew: git, Node, Chrome, VS Code |
+| Docker | Docker Desktop (winget) | Docker Engine (`get.docker.com`) | Docker Desktop (Homebrew) |
+| Claude Desktop | winget | — no hay versión oficial | Homebrew |
+| Claude Code | instalador oficial (`claude.ai/install.ps1`) | instalador oficial (`claude.ai/install.sh`) | instalador oficial |
+| Gentle AI | instalador oficial (compila con Go) | instalador oficial | Homebrew (`gentleman-programming/tap`) |
+| Gentle Shell | `npm i -g @earendil-works/pi-coding-agent gentle-pi` | igual (con `sudo`) | igual |
 | Tailscale | winget + `tailscale up --unattended` | instalador oficial + `tailscale up` | Homebrew cask + `tailscale up` |
 | Accesos directos | `.url` y `.lnk` en el escritorio | `.desktop` en el escritorio | `.webloc` en el escritorio |
 

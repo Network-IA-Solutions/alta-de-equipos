@@ -2,9 +2,11 @@
 # setup-unix.sh - Alta de un equipo Linux o macOS en la red de Network Solutions.
 #
 # Que hace, en orden:
-#   1. Instala los programas base (apt/dnf/pacman en Linux, Homebrew en macOS).
-#   2. Instala Tailscale y une el equipo a la tailnet.
-#   3. Crea en el escritorio los accesos directos (Google, Proxmox, unidad compartida).
+#   1. Instala los programas base (apt/dnf/pacman en Linux, Homebrew en macOS), Node y Docker.
+#   2. Instala las herramientas de IA: Claude Code, Claude Desktop (solo macOS),
+#      Gentle AI y Gentle Shell.
+#   3. Instala Tailscale y une el equipo a la tailnet.
+#   4. Crea en el escritorio los accesos directos (Google, Proxmox, unidad compartida).
 #
 # Uso (como usuario normal; pide sudo cuando lo necesita):
 #   curl -fsSL <URL>/setup-unix.sh | bash
@@ -18,8 +20,16 @@ set -euo pipefail
 
 # ---------------------------------------------------------------- configuracion
 LINUX_PACKAGES=(git curl)
-MAC_FORMULAE=(git)
-MAC_CASKS=(google-chrome visual-studio-code)
+MAC_FORMULAE=(git node)
+MAC_CASKS=(google-chrome visual-studio-code claude docker-desktop)
+
+# Instaladores oficiales de cada herramienta.
+CLAUDE_CODE_INSTALLER="https://claude.ai/install.sh"
+GENTLE_AI_INSTALLER="https://raw.githubusercontent.com/Gentleman-Programming/gentle-ai/main/scripts/install.sh"
+GENTLE_AI_BREW="gentleman-programming/tap/gentle-ai"
+GENTLE_SHELL_PACKAGES=(@earendil-works/pi-coding-agent gentle-pi)
+MIN_NODE_MAJOR=22
+MIN_NODE_MINOR=19
 
 SHARE_URL="smb://100.75.16.110/Archivos"
 SHORTCUT_NAMES=("Google" "Proxmox - R630" "Proxmox - T40" "Proxmox - OptiPlex")
@@ -71,7 +81,12 @@ ensure_homebrew() {
   for candidate in /opt/homebrew/bin/brew /usr/local/bin/brew; do
     if [[ -x "$candidate" ]]; then eval "$("$candidate" shellenv)"; skip "Homebrew ya estaba instalado"; return; fi
   done
-  run /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+  # NONINTERACTIVE y </dev/null: con "curl | bash" la entrada estandar es este mismo script.
+  if [[ "$DRY_RUN" == "1" ]]; then
+    run "instalador oficial de Homebrew"
+  else
+    NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" < /dev/null
+  fi
   if [[ "$DRY_RUN" != "1" ]]; then
     for candidate in /opt/homebrew/bin/brew /usr/local/bin/brew; do
       if [[ -x "$candidate" ]]; then eval "$("$candidate" shellenv)"; fi
@@ -90,6 +105,75 @@ install_mac_packages() {
     if [[ "$DRY_RUN" != "1" ]] && brew list --cask "$c" >/dev/null 2>&1; then skip "$c ya estaba instalado"; continue; fi
     run brew install --cask "$c"; ok "$c"
   done
+}
+
+# ------------------------------------------------------------ node y docker
+node_ok() {
+  command -v node >/dev/null 2>&1 || return 1
+  local v major minor
+  v="$(node --version 2>/dev/null)"; v="${v#v}"
+  major="${v%%.*}"; minor="${v#*.}"; minor="${minor%%.*}"
+  [[ "$major" =~ ^[0-9]+$ && "$minor" =~ ^[0-9]+$ ]] || return 1
+  (( major > MIN_NODE_MAJOR || (major == MIN_NODE_MAJOR && minor >= MIN_NODE_MINOR) ))
+}
+
+ensure_node_linux() {
+  if node_ok; then skip "Node $(node --version) ya estaba instalado"; return; fi
+  # Los repositorios de las distros suelen traer un Node viejo: se usa NodeSource (LTS).
+  if command -v apt-get >/dev/null 2>&1; then
+    run sh -c "curl -fsSL https://deb.nodesource.com/setup_lts.x | ${SUDO:+$SUDO -E} bash -"
+    run $SUDO apt-get install -y nodejs < /dev/null
+  elif command -v dnf >/dev/null 2>&1; then
+    run sh -c "curl -fsSL https://rpm.nodesource.com/setup_lts.x | $SUDO bash -"
+    run $SUDO dnf install -y nodejs < /dev/null
+  else
+    run $SUDO pacman -Sy --needed --noconfirm nodejs npm < /dev/null
+  fi
+  if [[ "$DRY_RUN" != "1" ]] && ! node_ok; then
+    die "Gentle Shell necesita Node $MIN_NODE_MAJOR.$MIN_NODE_MINOR o superior y no se pudo instalar."
+  fi
+  ok "Node instalado"
+}
+
+install_docker_linux() {
+  if command -v docker >/dev/null 2>&1; then skip "Docker ya estaba instalado"; return; fi
+  run sh -c "curl -fsSL https://get.docker.com | $SUDO sh"
+  run $SUDO usermod -aG docker "$(id -un)"
+  ok "Docker instalado (el grupo docker aplica al volver a iniciar sesion)"
+}
+
+# -------------------------------------------------------------- herramientas IA
+install_ai_tools() {
+  if command -v claude >/dev/null 2>&1 || [[ -x "$HOME/.local/bin/claude" ]]; then
+    skip "Claude Code ya estaba instalado"
+  else
+    run sh -c "curl -fsSL $CLAUDE_CODE_INSTALLER | bash"
+    ok "Claude Code instalado"
+  fi
+
+  if command -v gentle-ai >/dev/null 2>&1; then
+    skip "Gentle AI ya estaba instalado"
+  elif [[ "$PLATFORM" == "mac" ]]; then
+    run brew install "$GENTLE_AI_BREW"
+    ok "Gentle AI instalado"
+  else
+    run sh -c "curl -fsSL $GENTLE_AI_INSTALLER | bash"
+    ok "Gentle AI instalado"
+  fi
+
+  if command -v gentle-shell >/dev/null 2>&1; then
+    skip "Gentle Shell ya estaba instalado"
+  else
+    # Con el Node de Homebrew no hace falta sudo; con el del sistema (Linux), si.
+    local npm_sudo="$SUDO"
+    if [[ "$PLATFORM" == "mac" ]]; then npm_sudo=""; fi
+    run $npm_sudo npm install -g "${GENTLE_SHELL_PACKAGES[@]}"
+    ok "Gentle Shell instalado"
+  fi
+
+  if [[ "$PLATFORM" == "linux" ]]; then
+    skip "Claude Desktop no tiene version oficial para Linux: se usa Claude Code o claude.ai"
+  fi
 }
 
 # ------------------------------------------------------------------ tailscale
@@ -198,7 +282,16 @@ create_shortcuts() {
 if [[ "$DRY_RUN" == "1" ]]; then printf '\033[33mModo DRY_RUN: no se cambia nada.\033[0m\n'; fi
 
 step "Programas base ($PLATFORM)"
-if [[ "$PLATFORM" == "linux" ]]; then install_linux_packages; else install_mac_packages; fi
+if [[ "$PLATFORM" == "linux" ]]; then
+  install_linux_packages
+  ensure_node_linux
+  install_docker_linux
+else
+  install_mac_packages
+fi
+
+step "Herramientas de IA"
+install_ai_tools
 
 step "Tailscale"
 install_tailscale
@@ -213,3 +306,12 @@ create_shortcuts
 step "Listo"
 printf '    Proxmox usa un certificado propio: el navegador avisara la primera vez, es esperado.\n'
 printf '    La invitacion a la organizacion la hace un administrador (ver ADMIN.md).\n'
+printf '\n    Siguientes pasos, en una terminal NUEVA:\n'
+if [[ "$PLATFORM" == "mac" ]]; then
+  printf '      - abre Docker Desktop una vez para que termine de configurarse\n'
+else
+  printf '      - cierra sesion y vuelve a entrar para usar docker sin sudo\n'
+fi
+printf '      - claude          -> inicia sesion en Claude Code\n'
+printf '      - gentle-ai       -> configura los agentes (memoria, skills, persona)\n'
+printf '      - gentle-shell    -> abre Gentle Shell\n'

@@ -1,9 +1,10 @@
 # setup-windows.ps1 - Alta de un equipo Windows en la red de Network Solutions.
 #
 # Que hace, en orden:
-#   1. Instala los programas base con winget.
-#   2. Instala Tailscale y une el equipo a la tailnet.
-#   3. Crea en el escritorio los accesos directos (Google, Proxmox, unidad compartida).
+#   1. Instala los programas base con winget (incluye Claude Desktop y Docker Desktop).
+#   2. Instala las herramientas de IA: Claude Code, Gentle AI y Gentle Shell.
+#   3. Instala Tailscale y une el equipo a la tailnet.
+#   4. Crea en el escritorio los accesos directos (Google, Proxmox, unidad compartida).
 #
 # Uso (PowerShell abierto como administrador):
 #   irm <URL>/setup-windows.ps1 | iex
@@ -21,8 +22,18 @@ $Apps = @(
     'Google.Chrome',
     'Git.Git',
     'Microsoft.VisualStudioCode',
-    '7zip.7zip'
+    '7zip.7zip',
+    'OpenJS.NodeJS.LTS',      # Gentle Shell necesita Node >= 22.19
+    'GoLang.Go',              # Gentle AI se instala desde el codigo en Windows (Go >= 1.25.10)
+    'Anthropic.Claude',       # Claude Desktop
+    'Docker.DockerDesktop'
 )
+
+# Instaladores oficiales de cada herramienta (se ejecutan en un proceso aparte).
+$ClaudeCodeInstaller = 'https://claude.ai/install.ps1'
+$GentleAiInstaller   = 'https://raw.githubusercontent.com/Gentleman-Programming/gentle-ai/main/scripts/install.ps1'
+$GentleShellPackages = @('@earendil-works/pi-coding-agent', 'gentle-pi')
+$MinNodeVersion      = [version]'22.19.0'
 $TailscaleId = 'Tailscale.Tailscale'
 
 $SharePath = '\\100.75.16.110\Archivos'
@@ -62,6 +73,31 @@ function Install-WingetApp([string]$Id) {
         if ($LASTEXITCODE -ne 0) { throw "winget no pudo instalar $Id (codigo $LASTEXITCODE)" }
     }
     Write-Ok "$Id instalado"
+}
+
+# winget no actualiza el PATH de esta sesion: se relee del registro.
+function Update-SessionPath {
+    $machine = [Environment]::GetEnvironmentVariable('Path', 'Machine')
+    $user    = [Environment]::GetEnvironmentVariable('Path', 'User')
+    $env:Path = "$machine;$user"
+}
+
+function Test-Command([string]$Name) { [bool](Get-Command $Name -ErrorAction SilentlyContinue) }
+
+# Ejecuta un instalador "irm | iex" en otro proceso: si hace "exit", no corta este script.
+function Invoke-RemoteInstaller([string]$Name, [string]$Url) {
+    Invoke-Action "instalador oficial de $Name ($Url)" {
+        $ps = (Get-Process -Id $PID).Path
+        & $ps -NoProfile -ExecutionPolicy Bypass -Command "irm '$Url' | iex"
+        if ($LASTEXITCODE -ne 0) { throw "El instalador de $Name fallo (codigo $LASTEXITCODE)" }
+    }
+    Update-SessionPath
+}
+
+function Get-NodeVersion {
+    if (-not (Test-Command node)) { return $null }
+    $raw = (& node --version) -replace '^v', ''
+    try { return [version]$raw } catch { return $null }
 }
 
 function Get-TailscaleExe {
@@ -110,6 +146,28 @@ if ($DryRun) { Write-Host 'Modo DRY_RUN: no se cambia nada.' -ForegroundColor Ye
 
 Write-Step 'Programas base'
 foreach ($app in $Apps) { Install-WingetApp $app }
+Update-SessionPath
+
+Write-Step 'Herramientas de IA'
+if (Test-Command claude) { Write-Skip 'Claude Code ya estaba instalado' }
+else { Invoke-RemoteInstaller 'Claude Code' $ClaudeCodeInstaller; Write-Ok 'Claude Code instalado' }
+
+if (Test-Command gentle-ai) { Write-Skip 'Gentle AI ya estaba instalado' }
+else { Invoke-RemoteInstaller 'Gentle AI' $GentleAiInstaller; Write-Ok 'Gentle AI instalado' }
+
+if (Test-Command gentle-shell) {
+    Write-Skip 'Gentle Shell ya estaba instalado'
+} else {
+    $node = Get-NodeVersion
+    if (-not $DryRun -and (-not $node -or $node -lt $MinNodeVersion)) {
+        throw "Gentle Shell necesita Node $MinNodeVersion o superior (hay: $node). Cierra la terminal, abre otra y repite."
+    }
+    Invoke-Action "npm install -g $($GentleShellPackages -join ' ')" {
+        & npm install -g @GentleShellPackages
+        if ($LASTEXITCODE -ne 0) { throw "npm no pudo instalar Gentle Shell (codigo $LASTEXITCODE)" }
+    }
+    Write-Ok 'Gentle Shell instalado'
+}
 
 Write-Step 'Tailscale'
 Install-WingetApp $TailscaleId
@@ -146,3 +204,9 @@ New-FolderShortcut $desktop 'Unidad compartida' $SharePath
 Write-Step 'Listo'
 Write-Host '    Proxmox usa un certificado propio: el navegador avisara la primera vez, es esperado.'
 Write-Host '    La invitacion a la organizacion la hace un administrador (ver ADMIN.md).'
+Write-Host ''
+Write-Host '    Siguientes pasos, en una terminal NUEVA:'
+Write-Host '      - Reinicia el equipo si Docker Desktop lo pide (activa WSL 2) y abrelo una vez.'
+Write-Host '      - claude          -> inicia sesion en Claude Code'
+Write-Host '      - gentle-ai       -> configura los agentes (memoria, skills, persona)'
+Write-Host '      - gentle-shell    -> abre Gentle Shell'
