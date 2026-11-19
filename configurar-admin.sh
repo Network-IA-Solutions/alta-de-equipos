@@ -53,8 +53,8 @@ find_python() {
 
 # En Git Bash de Windows, python no entiende rutas /tmp/...: se convierten.
 # Permisos del token de gh (cabecera X-Oauth-Scopes). Vacio si el token no los informa
-# (tokens fine-grained o GH_TOKEN), y en ese caso decide la propia API.
-gh_scopes() { gh api -i user 2>/dev/null | tr -d '\r' | sed -n 's/^[Xx]-[Oo][Aa]uth-[Ss]copes: *//p' | tr -d ' '; }
+# (tokens fine-grained o GH_TOKEN) o si la consulta falla, y en ese caso decide la propia API.
+gh_scopes() { { gh api -i user 2>/dev/null || true; } | tr -d '\r' | sed -n 's/^[Xx]-[Oo][Aa]uth-[Ss]copes: *//p' | tr -d ' '; }
 
 native_path() { if command -v cygpath >/dev/null 2>&1; then cygpath -w "$1"; else printf '%s' "$1"; fi; }
 
