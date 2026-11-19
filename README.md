@@ -35,6 +35,7 @@ queda en el historial.
 | Paso | Windows | Linux | macOS |
 |---|---|---|---|
 | Programas base | winget: Chrome, Git, VS Code, 7-Zip, Node LTS, Go | apt / dnf / pacman: git, curl; Node LTS (NodeSource) | Homebrew: git, Node, Chrome, VS Code |
+| Rutas largas | registro `LongPathsEnabled = 1` + `git config --system core.longpaths true` (evita `Filename too long`) | — no hace falta | — no hace falta |
 | Docker | Docker Desktop (winget) | Docker Engine (`get.docker.com`) | Docker Desktop (Homebrew) |
 | Claude Desktop | winget | — no hay versión oficial | Homebrew |
 | Claude Code | instalador oficial (`claude.ai/install.ps1`) | instalador oficial (`claude.ai/install.sh`) | instalador oficial |

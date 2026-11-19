@@ -52,6 +52,10 @@ find_python() {
 }
 
 # En Git Bash de Windows, python no entiende rutas /tmp/...: se convierten.
+# Permisos del token de gh (cabecera X-Oauth-Scopes). Vacio si el token no los informa
+# (tokens fine-grained o GH_TOKEN) o si la consulta falla, y en ese caso decide la propia API.
+gh_scopes() { { gh api -i user 2>/dev/null || true; } | tr -d '\r' | sed -n 's/^[Xx]-[Oo][Aa]uth-[Ss]copes: *//p' | tr -d ' '; }
+
 native_path() { if command -v cygpath >/dev/null 2>&1; then cygpath -w "$1"; else printf '%s' "$1"; fi; }
 
 PY="$(find_python)"
@@ -245,7 +249,15 @@ else
     if [[ "$role" != "admin" ]]; then
       warn "$me no es admin de $GITHUB_ORG: no puede invitar. Lo hace un admin desde https://github.com/orgs/$GITHUB_ORG/people"
     else
-      gh api --method POST "orgs/$GITHUB_ORG/invitations" -f email="$email" -f role=direct_member --jq '"    ok  invitacion enviada a \(.email)"'
+      # Leer el rol alcanza con read:org, pero invitar necesita admin:org, que gh no pide por defecto.
+      scopes="$(gh_scopes)"
+      if [[ -n "$scopes" && ",$scopes," != *",admin:org,"* ]]; then
+        warn "el token de gh no tiene el permiso admin:org (hace falta para invitar): se pide ahora en el navegador."
+        gh auth refresh -h github.com -s admin:org < /dev/tty || warn "no se pudo ampliar el permiso de gh."
+      fi
+      if ! gh api --method POST "orgs/$GITHUB_ORG/invitations" -f email="$email" -f role=direct_member --jq '"    ok  invitacion enviada a \(.email)"'; then
+        warn "no se pudo enviar la invitacion. Se puede invitar desde https://github.com/orgs/$GITHUB_ORG/people"
+      fi
     fi
   fi
 fi

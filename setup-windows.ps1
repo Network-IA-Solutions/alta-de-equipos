@@ -1,7 +1,9 @@
 # setup-windows.ps1 - Alta de un equipo Windows en la red de Network Solutions.
 #
 # Que hace, en orden:
-#   1. Instala los programas base con winget (incluye Claude Desktop y Docker Desktop).
+#   1. Instala los programas base con winget (incluye Claude Desktop y Docker Desktop)
+#      y activa las rutas largas en Windows y en git (sin eso, git falla con
+#      "Filename too long" en carpetas profundas).
 #   2. Instala las herramientas de IA: Claude Code, Gentle AI y Gentle Shell.
 #   3. Instala Tailscale y une el equipo a la tailnet.
 #   4. Crea en el escritorio los accesos directos (Google, Proxmox, unidad compartida).
@@ -94,6 +96,36 @@ function Invoke-RemoteInstaller([string]$Name, [string]$Url) {
     Update-SessionPath
 }
 
+# Windows limita las rutas a 260 caracteres. Hace falta activar las rutas largas en el
+# sistema (registro) y en git (core.longpaths), o git falla con "Filename too long".
+function Enable-LongPaths {
+    $key = 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem'
+    $enabled = (Get-ItemProperty -LiteralPath $key -Name LongPathsEnabled -ErrorAction SilentlyContinue).LongPathsEnabled
+    if ($enabled -eq 1) {
+        Write-Skip 'Windows ya admite rutas largas'
+    } else {
+        Invoke-Action 'activar rutas largas en Windows (LongPathsEnabled = 1)' {
+            Set-ItemProperty -LiteralPath $key -Name LongPathsEnabled -Value 1 -Type DWord
+        }
+        Write-Ok 'rutas largas activadas en Windows'
+    }
+
+    if (-not (Test-Command git)) {
+        if ($DryRun) { Write-Host '    [dry-run] git config --system core.longpaths true' -ForegroundColor Yellow; return }
+        throw 'Git se instalo pero no se encuentra git.exe. Cierra la terminal, abre otra y repite.'
+    }
+    $current = & git config --system --get core.longpaths
+    if ($current -eq 'true') {
+        Write-Skip 'git ya admite rutas largas'
+    } else {
+        Invoke-Action 'git config --system core.longpaths true' {
+            & git config --system core.longpaths true
+            if ($LASTEXITCODE -ne 0) { throw "git no pudo activar core.longpaths (codigo $LASTEXITCODE)" }
+        }
+        Write-Ok 'rutas largas activadas en git'
+    }
+}
+
 function Get-NodeVersion {
     if (-not (Test-Command node)) { return $null }
     $raw = (& node --version) -replace '^v', ''
@@ -147,6 +179,9 @@ if ($DryRun) { Write-Host 'Modo DRY_RUN: no se cambia nada.' -ForegroundColor Ye
 Write-Step 'Programas base'
 foreach ($app in $Apps) { Install-WingetApp $app }
 Update-SessionPath
+
+Write-Step 'Rutas largas'
+Enable-LongPaths
 
 Write-Step 'Herramientas de IA'
 if (Test-Command claude) { Write-Skip 'Claude Code ya estaba instalado' }
